@@ -48,11 +48,19 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "icon": "src/assets/images/Capybara.ico"
+    },
+    "mac": {
+      "icon": "src/assets/images/Capybara.ico"
+    },
+    "linux": {
+      "icon": "src/assets/images/Capybara.ico"
     },
     "files": [
       "dist/**/*",
-      "electron-main.js"
+      "electron-main.js",
+      "src/assets/images/Capybara.ico"
     ]
   }
 }

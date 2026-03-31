@@ -47,6 +47,29 @@ const ICONS = [
   { id: 'leaf', icon: Leaf },
 ] as const;
 
+// căn chỉnh content trong sticky note
+const AutoSizeTextarea = ({ value, onChange, className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.style.height = 'auto';
+      ref.current.style.height = `${ref.current.scrollHeight}px`;
+    }
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      className={cn("resize-none overflow-hidden", className)}
+      rows={1}
+      {...props}
+    />
+  );
+};
+
 interface StickyNoteProps {
   note: Note;
   boardRef: React.RefObject<HTMLDivElement>;
@@ -67,38 +90,54 @@ const StickyNote: React.FC<StickyNoteProps> = ({
   removeNote 
 }) => {
   const scale = note.width / 112;
-  const dragStartOffset = useRef({ x: 0, y: 0 });
+  const isDragging = useRef(false);
+  const dragStartPos = useRef({ x: 0, y: 0 });
+  const noteStartPos = useRef({ x: 0, y: 0 });
+
+  const handleRightMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 2) return; // Only right mouse button
+    e.preventDefault();
+    e.stopPropagation();
+
+    isDragging.current = true;
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+    noteStartPos.current = { x: note.x, y: note.y };
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current || !boardRef.current) return;
+      ev.preventDefault();
+      
+      const boardRect = boardRef.current.getBoundingClientRect();
+      const dx = ev.clientX - dragStartPos.current.x;
+      const dy = ev.clientY - dragStartPos.current.y;
+      
+      let newX = noteStartPos.current.x + dx;
+      let newY = noteStartPos.current.y + dy;
+      
+      // Constrain within board
+      newX = Math.max(0, Math.min(newX, boardRect.width - note.width));
+      newY = Math.max(0, Math.min(newY, boardRect.height - note.height));
+      
+      updateNote(note.id, { x: newX, y: newY });
+    };
+
+    const handleMouseUp = (ev: MouseEvent) => {
+      isDragging.current = false;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   return (
     <motion.div
-      drag={resizingNoteId !== note.id}
-      dragConstraints={boardRef}
-      dragMomentum={false}
-      dragElastic={0}
-      onDragStart={(e, info) => {
-        const rect = (e.target as HTMLElement).closest('.sticky-note')?.getBoundingClientRect();
-        if (rect) {
-          dragStartOffset.current = {
-            x: info.point.x - rect.left,
-            y: info.point.y - rect.top
-          };
-        }
-      }}
-      onDragEnd={(_, info) => {
-        if (!boardRef.current) return;
-        const boardRect = boardRef.current.getBoundingClientRect();
-        updateNote(note.id, { 
-          x: info.point.x - boardRect.left - dragStartOffset.current.x, 
-          y: info.point.y - boardRect.top - dragStartOffset.current.y 
-        });
-      }}
+      onContextMenu={(e) => e.preventDefault()}
+      onMouseDown={handleRightMouseDown}
       initial={{ scale: 0, rotate: note.rotation }}
-      animate={{ scale: 1, rotate: note.rotation, x: 0, y: 0 }}
-      transition={{
-        x: { duration: 0 },
-        y: { duration: 0 },
-        default: { type: "spring", stiffness: 300, damping: 30 }
-      }}
+      animate={{ scale: 1, rotate: note.rotation }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
       exit={{ scale: 0 }}
       style={{ 
         left: note.x, 
@@ -108,7 +147,7 @@ const StickyNote: React.FC<StickyNoteProps> = ({
         backgroundColor: note.color,
         padding: `${16 * scale}px`,
       }}
-      className="absolute shadow-lg cursor-move sticky-note flex flex-col group border border-black/5"
+      className="absolute shadow-lg sticky-note flex flex-col group border border-black/5 cursor-default"
     >
       <button 
         onClick={(e) => {
@@ -162,14 +201,14 @@ const StickyNote: React.FC<StickyNoteProps> = ({
           {note.items.slice(0, 3).map(item => (
             <div 
               key={item.id} 
-              className="flex items-center truncate text-[#3b4d9b]"
-              style={{ gap: `${4 * scale}px`, fontSize: `${8 * scale}px` }}
+              className="flex items-start text-[#3b4d9b]"
+              style={{ gap: `${4 * scale}px`, fontSize: `${8 * scale}px`, marginBottom: `${2 * scale}px` }}
             >
               <div 
-                className={cn("border border-[#3b4d9b]/20 rounded-sm", item.completed && "bg-[#3b4d9b]/20")} 
-                style={{ width: `${8 * scale}px`, height: `${8 * scale}px` }}
+                className={cn("border border-[#3b4d9b]/20 rounded-sm shrink-0", item.completed && "bg-[#3b4d9b]/20")} 
+                style={{ width: `${8 * scale}px`, height: `${8 * scale}px`, marginTop: `${1 * scale}px` }}
               />
-              <span className={cn(item.completed && "line-through opacity-50")}>{item.text}</span>
+              <span className={cn("break-words min-w-0", item.completed && "line-through opacity-50")}>{item.text}</span>
             </div>
           ))}
           {note.items.length > 3 && (
@@ -405,7 +444,7 @@ export default function App() {
               >
                 {/* Title */}
                 <div className="mb-4">
-                  <input
+                  <AutoSizeTextarea
                     value={activeNote.title}
                     onChange={(e) => updateNote(activeNote.id, { title: e.target.value })}
                     className="w-full text-2xl font-bold bg-transparent border-none outline-none font-handwriting text-[#3b4d9b] placeholder-[#3b4d9b]/30"
@@ -416,7 +455,7 @@ export default function App() {
                 {/* Checklist Items */}
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
                   {activeNote.items.map((item) => (
-                    <div key={item.id} className="flex items-center gap-3 group/item">
+                    <div key={item.id} className="flex items-start gap-3 group/item">
                       <button 
                         onClick={() => {
                           const newItems = activeNote.items.map(i => 
@@ -424,11 +463,11 @@ export default function App() {
                           );
                           updateNote(activeNote.id, { items: newItems });
                         }}
-                        className="text-[#3b4d9b]/40 hover:text-[#3b4d9b]/70 transition-colors shrink-0"
+                        className="mt-1 text-[#3b4d9b]/40 hover:text-[#3b4d9b]/70 transition-colors shrink-0"
                       >
                         {item.completed ? <Check size={20} /> : <Square size={20} />}
                       </button>
-                      <input
+                      <AutoSizeTextarea
                         value={item.text}
                         onChange={(e) => {
                           const newItems = activeNote.items.map(i => 
@@ -446,7 +485,7 @@ export default function App() {
                           const newItems = activeNote.items.filter(i => i.id !== item.id);
                           updateNote(activeNote.id, { items: newItems });
                         }}
-                        className="opacity-0 group-hover/item:opacity-100 text-[#3b4d9b]/20 hover:text-[#3b4d9b]/50 transition-all shrink-0"
+                        className="mt-1 opacity-0 group-hover/item:opacity-100 text-[#3b4d9b]/20 hover:text-[#3b4d9b]/50 transition-all shrink-0"
                       >
                         <X size={16} />
                       </button>

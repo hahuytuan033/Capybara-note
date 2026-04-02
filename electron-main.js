@@ -10,7 +10,7 @@ function createWindow() {
     width: 400, // Kích thước này đủ sát với cái khung app UI (360x600) của bạn
     height: 700,
     title: "Capybara Note",
-    icon: path.join(__dirname, 'src', 'assets', 'images', 'Capybara.ico'),
+    icon: path.join(__dirname, 'src', 'assets', 'images', 'favicon.ico'),
     autoHideMenuBar: true, // Tắt thanh menu File, Edit.. rườm rà ở phía trên đi
     webPreferences: {
       nodeIntegration: true,

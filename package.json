@@ -49,18 +49,18 @@
         "nsis",
         "portable"
       ],
-      "icon": "src/assets/images/Capybara.ico"
+      "icon": "src/assets/images/favicon.ico"
     },
     "mac": {
-      "icon": "src/assets/images/Capybara.ico"
+      "icon": "src/assets/images/favicon.ico"
     },
     "linux": {
-      "icon": "src/assets/images/Capybara.ico"
+      "icon": "src/assets/images/favicon.ico"
     },
     "files": [
       "dist/**/*",
       "electron-main.js",
-      "src/assets/images/Capybara.ico"
+      "src/assets/images/favicon.ico"
     ]
   }
 }

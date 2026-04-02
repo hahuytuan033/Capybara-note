@@ -11,7 +11,7 @@ import {
   Palette
 } from 'lucide-react';
 import { cn } from './lib/utils';
-import capybaraImg from "./assets/images/capybara.png";
+import capybaraImg from "./assets/images/capybara.mp4";
 
 interface NoteItem {
   id: string;
@@ -377,11 +377,13 @@ export default function App() {
                 <div className="relative flex items-end justify-center w-full mb-4 z-10 gap-0">
                   {/* Capybara Scene (contains Laptop, Mouse, Capybara) */}
                   <div className="relative w-[320px] h-[160px] mb-[-6px] shrink-0 flex items-end justify-center z-10">
-                    <img 
+                    <video 
                       src={capybaraImg} 
-                      alt="Capybara Working" 
+                      autoPlay 
+                      loop 
+                      muted 
+                      playsInline
                       className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
                     />
                   </div>
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, X, Laptop, Pencil, Eraser, HelpCircle, 
@@ -33,11 +33,11 @@ interface Note {
 }
 
 const COLORS = [
-  '#f1c40f', // yellow (matching the image better)
-  '#ffccf9', // pink
-  '#ccf9ff', // blue
-  '#ccffcc', // green
-  '#ffdfcc', // orange
+  '#f1c40f',
+  '#ffccf9',
+  '#ccf9ff',
+  '#ccffcc',
+  '#ffdfcc',
 ];
 
 const ICONS = [
@@ -73,23 +73,28 @@ const AutoSizeTextarea = ({ value, onChange, className, ...props }: React.Textar
 interface StickyNoteProps {
   note: Note;
   boardRef: React.RefObject<HTMLDivElement>;
-  resizingNoteId: string | null;
-  setResizingNoteId: (id: string | null) => void;
   setActiveNoteId: (id: string | null) => void;
   updateNote: (id: string, updates: Partial<Note>) => void;
   removeNote: (id: string) => void;
 }
 
-const StickyNote: React.FC<StickyNoteProps> = ({ 
+// Bọc bằng React.memo để loại bỏ renders thừa thãi khi kéo thả 1 note khác
+const StickyNote: React.FC<StickyNoteProps> = React.memo(({ 
   note, 
   boardRef, 
-  resizingNoteId, 
-  setResizingNoteId, 
   setActiveNoteId, 
   updateNote, 
   removeNote 
 }) => {
-  const scale = note.width / 112;
+  // Local state for dragging & resizing to avoid App re-renders
+  const [localState, setLocalState] = useState<{ x?: number, y?: number, width?: number, height?: number } | null>(null);
+  
+  const currentX = localState?.x ?? note.x;
+  const currentY = localState?.y ?? note.y;
+  const currentWidth = localState?.width ?? note.width;
+  const currentHeight = localState?.height ?? note.height;
+  
+  const scale = Math.min(currentWidth / 112, currentHeight / 112);
   const isDragging = useRef(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
   const noteStartPos = useRef({ x: 0, y: 0 });
@@ -101,7 +106,7 @@ const StickyNote: React.FC<StickyNoteProps> = ({
 
     isDragging.current = true;
     dragStartPos.current = { x: e.clientX, y: e.clientY };
-    noteStartPos.current = { x: note.x, y: note.y };
+    noteStartPos.current = { x: currentX, y: currentY };
 
     const handleMouseMove = (ev: MouseEvent) => {
       if (!isDragging.current || !boardRef.current) return;
@@ -115,20 +120,61 @@ const StickyNote: React.FC<StickyNoteProps> = ({
       let newY = noteStartPos.current.y + dy;
       
       // Constrain within board
-      newX = Math.max(0, Math.min(newX, boardRect.width - note.width));
-      newY = Math.max(0, Math.min(newY, boardRect.height - note.height));
+      newX = Math.max(0, Math.min(newX, boardRect.width - currentWidth));
+      newY = Math.max(0, Math.min(newY, boardRect.height - currentHeight));
       
-      updateNote(note.id, { x: newX, y: newY });
+      setLocalState(prev => ({ ...prev, x: newX, y: newY }));
     };
 
     const handleMouseUp = (ev: MouseEvent) => {
       isDragging.current = false;
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      
+      // Sync with global state only on mouse up
+      setLocalState(prev => {
+        if (prev && (prev.x !== undefined || prev.y !== undefined)) {
+          updateNote(note.id, { x: prev.x ?? note.x, y: prev.y ?? note.y });
+        }
+        return null;
+      });
     };
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleResizeStart = (e: React.PointerEvent, direction: 'e' | 's' | 'se') => {
+    e.stopPropagation();
+    
+    const handlePointerMove = (ev: PointerEvent) => {
+      if (!boardRef.current) return;
+      const boardRect = boardRef.current.getBoundingClientRect();
+      const newWidth = Math.max(80, ev.clientX - (boardRect.left + currentX));
+      const newHeight = Math.max(80, ev.clientY - (boardRect.top + currentY));
+      
+      const updates: any = {};
+      if (direction === 'e' || direction === 'se') updates.width = newWidth;
+      if (direction === 's' || direction === 'se') updates.height = newHeight;
+      
+      setLocalState(prev => ({ ...prev, ...updates }));
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      
+      // Sync with global state only on mouse up
+      setLocalState(prev => {
+        if (prev && (prev.width !== undefined || prev.height !== undefined)) {
+          updateNote(note.id, { width: prev.width ?? currentWidth, height: prev.height ?? currentHeight });
+        }
+        return null;
+      });
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
   };
 
   return (
@@ -140,10 +186,10 @@ const StickyNote: React.FC<StickyNoteProps> = ({
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       exit={{ scale: 0 }}
       style={{ 
-        left: note.x, 
-        top: note.y,
-        width: note.width,
-        height: note.height,
+        left: currentX, 
+        top: currentY,
+        width: currentWidth,
+        height: currentHeight,
         backgroundColor: note.color,
         padding: `${16 * scale}px`,
       }}
@@ -159,13 +205,22 @@ const StickyNote: React.FC<StickyNoteProps> = ({
         <X size={14 * scale} className="text-gray-500" />
       </button>
 
-      {/* Resize Handle */}
+      {/* East Resize Handle */}
       <div 
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          setResizingNoteId(note.id);
-        }}
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize flex items-end justify-end p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+        onPointerDown={(e) => handleResizeStart(e, 'e')}
+        className="absolute top-0 right-0 w-3 h-full cursor-e-resize opacity-0 group-hover:opacity-100 transition-opacity z-20"
+      />
+
+      {/* South Resize Handle */}
+      <div 
+        onPointerDown={(e) => handleResizeStart(e, 's')}
+        className="absolute bottom-0 left-0 w-full h-3 cursor-s-resize opacity-0 group-hover:opacity-100 transition-opacity z-20"
+      />
+
+      {/* South-East Resize Handle */}
+      <div 
+        onPointerDown={(e) => handleResizeStart(e, 'se')}
+        className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize flex items-end justify-end p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-30"
       >
         <div 
           className="border-r-2 border-b-2 border-black/20" 
@@ -180,9 +235,9 @@ const StickyNote: React.FC<StickyNoteProps> = ({
           setActiveNoteId(note.id);
         }}
       >
-        <div className="flex items-center mb-1" style={{ gap: `${4 * scale}px` }}>
+        <div className="flex items-start mb-1" style={{ gap: `${4 * scale}px` }}>
           {note.icon !== 'none' && (
-            <div className="text-gray-700">
+            <div className="text-gray-700 shrink-0 mt-0.5">
               {(() => {
                 const IconComp = ICONS.find(i => i.id === note.icon)?.icon;
                 return IconComp ? <IconComp size={12 * scale} /> : null;
@@ -190,7 +245,7 @@ const StickyNote: React.FC<StickyNoteProps> = ({
             </div>
           )}
           <h3 
-            className="font-bold truncate text-[#3b4d9b]"
+            className="font-bold text-[#3b4d9b] break-words line-clamp-3 leading-tight flex-1 min-w-0"
             style={{ fontSize: `${10 * scale}px` }}
           >
             {note.title}
@@ -198,32 +253,26 @@ const StickyNote: React.FC<StickyNoteProps> = ({
         </div>
         
         <div className="flex-1 overflow-hidden">
-          {note.items.slice(0, 3).map(item => (
-            <div 
-              key={item.id} 
-              className="flex items-start text-[#3b4d9b]"
-              style={{ gap: `${4 * scale}px`, fontSize: `${8 * scale}px`, marginBottom: `${2 * scale}px` }}
-            >
+          <div className="flex flex-col gap-[2px]">
+            {note.items.map(item => (
               <div 
-                className={cn("border border-[#3b4d9b]/20 rounded-sm shrink-0", item.completed && "bg-[#3b4d9b]/20")} 
-                style={{ width: `${8 * scale}px`, height: `${8 * scale}px`, marginTop: `${1 * scale}px` }}
-              />
-              <span className={cn("break-words min-w-0", item.completed && "line-through opacity-50")}>{item.text}</span>
-            </div>
-          ))}
-          {note.items.length > 3 && (
-            <div 
-              className="opacity-50 text-[#3b4d9b]"
-              style={{ fontSize: `${8 * scale}px` }}
-            >
-              ...
-            </div>
-          )}
+                key={item.id} 
+                className="flex items-start text-[#3b4d9b] w-full"
+                style={{ gap: `${4 * scale}px`, fontSize: `${8 * scale}px` }}
+              >
+                <div 
+                  className={cn("border border-[#3b4d9b]/20 rounded-sm shrink-0", item.completed && "bg-[#3b4d9b]/20")} 
+                  style={{ width: `${8 * scale}px`, height: `${8 * scale}px`, marginTop: `${1 * scale}px` }}
+                />
+                <span className={cn("flex-1 break-words min-w-0 leading-tight", item.completed && "line-through opacity-50")}>{item.text}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </motion.div>
   );
-}
+});
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>(() => {
@@ -233,44 +282,40 @@ export default function App() {
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [showBubble, setShowBubble] = useState(true);
   const [isClosed, setIsClosed] = useState(false);
-  const [resizingNoteId, setResizingNoteId] = useState<string | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
+  // Auto pause/play video when window loses/gains focus
   useEffect(() => {
-    if (!resizingNoteId) return;
-
-    const handlePointerMove = (e: PointerEvent) => {
-      const note = notes.find(n => n.id === resizingNoteId);
-      if (!note || !boardRef.current) return;
-
-      const boardRect = boardRef.current.getBoundingClientRect();
-      // Calculate new dimensions relative to the note's top-left corner
-      const newWidth = Math.max(80, e.clientX - (boardRect.left + note.x));
-      const newHeight = Math.max(80, e.clientY - (boardRect.top + note.y));
-
-      updateNote(resizingNoteId, { width: newWidth, height: newHeight });
+    const handleBlur = () => {
+      videoRef.current?.pause();
+    };
+    const handleFocus = () => {
+      videoRef.current?.play().catch(() => {});
     };
 
-    const handlePointerUp = () => {
-      setResizingNoteId(null);
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, [resizingNoteId, notes]);
+  }, []);
 
+  // Debounced LocalStorage saving to prevent blocking thread
   useEffect(() => {
-    localStorage.setItem('roberts-notes', JSON.stringify(notes));
+    const timer = setTimeout(() => {
+      localStorage.setItem('roberts-notes', JSON.stringify(notes));
+    }, 500);
+    
     if (notes.length > 0) setShowBubble(false);
+    
+    return () => clearTimeout(timer);
   }, [notes]);
 
-  const addNote = () => {
+  const addNote = useCallback(() => {
     if (!boardRef.current) return;
     
     const boardRect = boardRef.current.getBoundingClientRect();
@@ -281,25 +326,25 @@ export default function App() {
       icon: 'none',
       x: boardRect.width / 2 - 56 + (Math.random() * 40 - 20),
       y: boardRect.height / 2 - 56 + (Math.random() * 40 - 20),
-      width: 112, // Default w-28 is 112px
-      height: 112, // Default h-28 is 112px
+      width: 112,
+      height: 112,
       color: COLORS[0],
       rotation: Math.random() * 6 - 3,
     };
     
-    setNotes([...notes, newNote]);
+    setNotes(prev => [...prev, newNote]);
     setActiveNoteId(newNote.id);
     setShowBubble(false);
-  };
+  }, []);
 
-  const updateNote = (id: string, updates: Partial<Note>) => {
-    setNotes(notes.map(n => n.id === id ? { ...n, ...updates } : n));
-  };
+  const updateNote = useCallback((id: string, updates: Partial<Note>) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
+  }, []);
 
-  const removeNote = (id: string) => {
-    setNotes(notes.filter(n => n.id !== id));
-    if (activeNoteId === id) setActiveNoteId(null);
-  };
+  const removeNote = useCallback((id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    setActiveNoteId(prev => prev === id ? null : prev);
+  }, []);
 
   const activeNote = notes.find(n => n.id === activeNoteId);
 
@@ -318,7 +363,6 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Close Button */}
             <button 
               onClick={() => setIsClosed(true)}
               className="absolute top-2 right-2 p-1.5 bg-black/5 hover:bg-black/10 rounded-full transition-colors z-50 group"
@@ -327,12 +371,10 @@ export default function App() {
               <X size={16} className="text-gray-400 group-hover:text-gray-600" />
             </button>
 
-            {/* Corkboard Area */}
             <div 
               ref={boardRef}
               className="relative w-[350px] h-[350px] bg-[#c18a5e] border-[3px] border-[#a06e45] mt-[3px] rounded-[2.5rem] shadow-sm overflow-hidden"
             >
-              {/* Cork Texture Overlay (Subtle) */}
               <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:30px_30px]" />
               
               <AnimatePresence>
@@ -341,8 +383,6 @@ export default function App() {
                     key={note.id}
                     note={note}
                     boardRef={boardRef}
-                    resizingNoteId={resizingNoteId}
-                    setResizingNoteId={setResizingNoteId}
                     setActiveNoteId={setActiveNoteId}
                     updateNote={updateNote}
                     removeNote={removeNote}
@@ -351,10 +391,7 @@ export default function App() {
               </AnimatePresence>
             </div>
 
-            {/* Robert and Desk Area */}
             <div className="absolute bottom-0 left-0 right-0 h-[40%] flex flex-col items-center justify-end pointer-events-none">
-              
-              {/* Speech Bubble */}
               <AnimatePresence>
                 {showBubble && (
                   <motion.div 
@@ -364,20 +401,18 @@ export default function App() {
                     className="relative mb-4 bg-[#b4c3f1] text-[#3b4d9b] p-5 rounded-[2rem] shadow-sm w-[240px] text-center font-bold text-sm z-20 border-2 border-[#3b4d9b]/10"
                   >
                     Click the sticky notes to add your focus for today!
-                    {/* Bubble Tail */}
                     <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-[#b4c3f1] transform rotate-45 border-r-2 border-b-2 border-[#3b4d9b]/10" />
                   </motion.div>
                 )}
               </AnimatePresence>
 
               <div className="relative w-full flex items-end justify-center px-2">
-                {/* Desk Surface */}
                 <div className="absolute bottom-0 w-full h-4 bg-[#c18a5e] border-t-[3px] border-[#a06e45] z-10" />
 
                 <div className="relative flex items-end justify-center w-full mb-4 z-10 gap-0">
-                  {/* Capybara Scene (contains Laptop, Mouse, Capybara) */}
                   <div className="relative w-[320px] h-[160px] mb-[-6px] shrink-0 flex items-end justify-center z-10">
                     <video 
+                      ref={videoRef}
                       src={capybaraImg} 
                       autoPlay 
                       loop 
@@ -387,7 +422,6 @@ export default function App() {
                     />
                   </div>
 
-                  {/* Sticky Note Stack - Right of Scene */}
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -403,12 +437,10 @@ export default function App() {
                     </div>
                   </motion.button>
 
-                  {/* Pencil Holder - Far Right */}
                   <div className="relative shrink-0 mb-1 ml-2 z-20">
                     <div className="w-10 h-12 bg-[#9ca3af] rounded-t-md border-[3px] border-[#4b5563] flex items-center justify-center">
                       <span className="text-[#4b5563] font-bold text-lg opacity-40">?</span>
                     </div>
-                    {/* Pencils */}
                     <div className="absolute -top-4 left-1.5 w-1.5 h-7 bg-red-500 rounded-t-full border-x border-t border-black/10" />
                     <div className="absolute -top-6 left-5 w-1.5 h-9 bg-yellow-600 rounded-t-full border-x border-t border-black/10" />
                   </div>
@@ -419,10 +451,9 @@ export default function App() {
         )}
       </div>
 
-      {/* Note Editor Modal */}
       <AnimatePresence>
         {activeNote && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm pointer-events-auto">
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -439,12 +470,10 @@ export default function App() {
                 <X size={20} />
               </button>
 
-              {/* Sticky Note Content */}
               <div 
                 className="relative w-full aspect-square rounded-3xl p-6 flex flex-col shadow-inner overflow-hidden mb-5"
                 style={{ backgroundColor: activeNote.color }}
               >
-                {/* Title */}
                 <div className="mb-4">
                   <AutoSizeTextarea
                     value={activeNote.title}
@@ -454,7 +483,6 @@ export default function App() {
                   />
                 </div>
 
-                {/* Checklist Items */}
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
                   {activeNote.items.map((item) => (
                     <div key={item.id} className="flex items-start gap-3 group/item">
@@ -494,7 +522,6 @@ export default function App() {
                     </div>
                   ))}
 
-                  {/* Tap to Add */}
                   <button
                     onClick={() => {
                       const newItem: NoteItem = {
@@ -511,7 +538,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Confirm Button (Bottom Right) - Matching Screenshot */}
                 <button 
                   onClick={() => {
                     setActiveNoteId(null);
@@ -523,10 +549,8 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Bottom Controls - Icons and Colors */}
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between gap-2">
-                  {/* Icon Selector */}
                   <div className="flex gap-2">
                     {ICONS.map(({ id, icon: IconComp }) => (
                       <button
@@ -544,7 +568,6 @@ export default function App() {
                     ))}
                   </div>
                   
-                  {/* Color Selector */}
                   <div className="relative">
                     <button
                       onClick={() => setShowColorPicker(!showColorPicker)}
@@ -600,7 +623,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Delete Note Button */}
                 <button
                   onClick={() => removeNote(activeNote.id)}
                   className="w-full py-2 text-[#3b4d9b]/40 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all text-xs font-bold flex items-center justify-center gap-2"

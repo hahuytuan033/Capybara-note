@@ -5,6 +5,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Giới hạn RAM cho V8 Engine (Khoảng 256MB) để tránh Electron ngốn quá mức
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=256');
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 400, // Kích thước này đủ sát với cái khung app UI (360x600) của bạn

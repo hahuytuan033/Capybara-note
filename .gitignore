@@ -10,3 +10,5 @@ coverage/
 .vscode/
 .cache/
 .agent/
+.tokensave/
+.claude/

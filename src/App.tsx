@@ -72,7 +72,7 @@ const AutoSizeTextarea = ({ value, onChange, className, ...props }: React.Textar
 
 interface StickyNoteProps {
   note: Note;
-  boardRef: React.RefObject<HTMLDivElement>;
+  boardRef: React.RefObject<HTMLDivElement | null>;
   setActiveNoteId: (id: string | null) => void;
   updateNote: (id: string, updates: Partial<Note>) => void;
   removeNote: (id: string) => void;
@@ -350,7 +350,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full bg-[#fdf2d5] flex items-center justify-center overflow-hidden relative font-sans">
-      <div className="w-[360px] h-[600px] bg-[#fdf2d5] flex flex-col items-center relative shadow-2xl overflow-hidden border-x border-black/5">
+      <div className="w-[500px] h-[800px] bg-[#fdf2d5] flex flex-col items-center relative shadow-2xl overflow-hidden border-x border-black/5">
         {isClosed ? (
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <p className="text-gray-500 font-medium">App is closed</p>
@@ -363,17 +363,17 @@ export default function App() {
           </div>
         ) : (
           <>
-            <button 
-              onClick={() => setIsClosed(true)}
+            {/* <button 
+              onClick={() => window.close()}
               className="absolute top-2 right-2 p-1.5 bg-black/5 hover:bg-black/10 rounded-full transition-colors z-50 group"
               title="Close App"
             >
               <X size={16} className="text-gray-400 group-hover:text-gray-600" />
-            </button>
+            </button> */}
 
             <div 
               ref={boardRef}
-              className="relative w-[350px] h-[350px] bg-[#c18a5e] border-[3px] border-[#a06e45] mt-[3px] rounded-[2.5rem] shadow-sm overflow-hidden"
+              className="relative w-[475px] h-[450px] bg-[#c18a5e] border-[3px] border-[#a06e45] mt-[3px] rounded-[2.5rem] shadow-sm overflow-hidden"
             >
               <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:30px_30px]" />
               
@@ -410,7 +410,7 @@ export default function App() {
                 <div className="absolute bottom-0 w-full h-4 bg-[#c18a5e] border-t-[3px] border-[#a06e45] z-10" />
 
                 <div className="relative flex items-end justify-center w-full mb-4 z-10 gap-0">
-                  <div className="relative w-[320px] h-[160px] mb-[-6px] shrink-0 flex items-end justify-center z-10">
+                  <div className="relative w-[320px] h-[160px] mb-[25px] shrink-0 flex items-end justify-center z-10">
                     <video 
                       ref={videoRef}
                       src={capybaraImg} 

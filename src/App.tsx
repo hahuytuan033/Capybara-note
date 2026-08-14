@@ -11,7 +11,8 @@ import {
   Palette
 } from 'lucide-react';
 import { cn } from './lib/utils';
-import capybaraImg from "./assets/images/capybara.mp4";
+import CapybaraAnimation from './components/CapybaraAnimation';
+import noteBtnImg from './assets/images/note_btn.png';
 
 interface NoteItem {
   id: string;
@@ -284,25 +285,6 @@ export default function App() {
   const [isClosed, setIsClosed] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  // Auto pause/play video when window loses/gains focus
-  useEffect(() => {
-    const handleBlur = () => {
-      videoRef.current?.pause();
-    };
-    const handleFocus = () => {
-      videoRef.current?.play().catch(() => {});
-    };
-
-    window.addEventListener('blur', handleBlur);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      window.removeEventListener('blur', handleBlur);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
 
   // Debounced LocalStorage saving to prevent blocking thread
   useEffect(() => {
@@ -410,40 +392,26 @@ export default function App() {
                 <div className="absolute bottom-0 w-full h-4 bg-[#c18a5e] border-t-[3px] border-[#a06e45] z-10" />
 
                 <div className="relative flex items-end justify-center w-full mb-4 z-10 gap-0">
-                  <div className="relative w-[320px] h-[160px] mb-[25px] shrink-0 flex items-end justify-center z-10">
-                    <video 
-                      ref={videoRef}
-                      src={capybaraImg} 
-                      autoPlay 
-                      loop 
-                      muted 
-                      playsInline
-                      className="w-full h-full object-contain"
-                    />
+                  {/* chỉnh kích thước cho capybara */}
+                  <div className="relative w-[340px] h-[340px] mb-[-40px] -translate-x-[-110px] shrink-0 flex items-end justify-center z-10">
+                    <CapybaraAnimation className="w-full h-full object-contain" fps={24} />
                   </div>
 
+                  {/* chỉnh kích thước của button note */}
                   <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
                     onClick={addNote}
-                    className="relative pointer-events-auto cursor-pointer shrink-0 mb-1 ml-[-20px] z-20"
+                    className="relative pointer-events-auto cursor-pointer shrink-0 mb-1 ml-[-20px] z-20 focus:outline-none translate-x-[-1px] translate-y-[-32px]"
+                    title="Add Note"
                   >
-                    <div className="w-12 h-8 bg-[#f1c40f] rounded-md border-[2px] border-white shadow-sm transform -rotate-2" />
-                    <div className="absolute top-1 left-1 w-12 h-8 bg-[#f1c40f] rounded-md border-[2px] border-white shadow-sm transform rotate-1" />
-                    <div className="absolute top-1.5 left-1.5 w-12 h-8 bg-[#f1c40f] rounded-md border-[2px] border-white shadow-md flex items-center justify-center">
-                      <div className="w-full h-full border border-[#d4ac0d]/30 rounded-sm flex items-center justify-center">
-                        <Plus size={14} className="text-[#d4ac0d]" />
-                      </div>
-                    </div>
+                    <img 
+                      src={noteBtnImg} 
+                      alt="Add Note" 
+                      className="w-14 h-auto object-contain select-none drop-shadow-md pointer-events-none"
+                      draggable={false}
+                    />
                   </motion.button>
-
-                  <div className="relative shrink-0 mb-1 ml-2 z-20">
-                    <div className="w-10 h-12 bg-[#9ca3af] rounded-t-md border-[3px] border-[#4b5563] flex items-center justify-center">
-                      <span className="text-[#4b5563] font-bold text-lg opacity-40">?</span>
-                    </div>
-                    <div className="absolute -top-4 left-1.5 w-1.5 h-7 bg-red-500 rounded-t-full border-x border-t border-black/10" />
-                    <div className="absolute -top-6 left-5 w-1.5 h-9 bg-yellow-600 rounded-t-full border-x border-t border-black/10" />
-                  </div>
                 </div>
               </div>
             </div>

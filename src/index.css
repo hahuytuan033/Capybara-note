@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'MomoSignature';
+  src: url('./assets/fonts/MomoSignature-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-handwriting: "Comic Sans MS", "Chalkboard SE", "Comic Neue", cursive;
+  --font-sans: "MomoSignature", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-handwriting: "MomoSignature", "Comic Sans MS", "Chalkboard SE", "Comic Neue", cursive;
   
   --color-desk-bg: #fdf2d5;
   --color-board: #c18a5e;
@@ -13,6 +21,7 @@
 }
 
 body {
+  font-family: var(--font-sans);
   background-color: var(--color-desk-bg);
   color: #333;
   overflow: hidden;

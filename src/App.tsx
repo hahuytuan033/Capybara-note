@@ -13,6 +13,7 @@ import {
 import { cn } from './lib/utils';
 import CapybaraAnimation from './components/CapybaraAnimation';
 import noteBtnImg from './assets/images/note_btn.png';
+import messageImg from './assets/images/message.png';
 
 interface NoteItem {
   id: string;
@@ -275,6 +276,13 @@ const StickyNote: React.FC<StickyNoteProps> = React.memo(({
   );
 });
 
+// ============================================================================
+// 🌙 BIẾN BOOL CHUYỂN ĐỔI ANIMATION TRONG CODE (CÁCH 2):
+// - true: Chạy animation ban đêm / buồn ngủ (10h tối - 6h sáng: Idle_tired)
+// - false: Chạy animation bình thường / làm việc (6h sáng - 10h tối: Idle_Work)
+// ============================================================================
+const IS_TIRED_ANIMATION: boolean = false;
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>(() => {
     const saved = localStorage.getItem('roberts-notes');
@@ -380,10 +388,19 @@ export default function App() {
                     initial={{ opacity: 0, y: 10, scale: 0.8 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
-                    className="relative mb-4 bg-[#b4c3f1] text-[#3b4d9b] p-5 rounded-[2rem] shadow-sm w-[240px] text-center font-bold text-sm z-20 border-2 border-[#3b4d9b]/10"
+                    className="relative mb-2 w-[260px] translate-x-[-50px] translate-y-[90px] flex items-center justify-center select-none z-20 pointer-events-none"
                   >
-                    Click the sticky notes to add your focus for today!
-                    <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-[#b4c3f1] transform rotate-45 border-r-2 border-b-2 border-[#3b4d9b]/10" />
+                    <img 
+                      src={messageImg} 
+                      alt="Message Bubble" 
+                      className="w-full h-auto object-contain drop-shadow-md pointer-events-none"
+                      draggable={false}
+                    />
+                    <div className="absolute inset-0 pt-4 pb-7 px-8 flex items-center justify-center text-center">
+                      <p className="font-sans font-bold text-xs text-[#543d2b] leading-tight select-none">
+                        Viết những việc quan trọng nhất hôm nay vào giấy note nha!
+                      </p>
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -394,7 +411,7 @@ export default function App() {
                 <div className="relative flex items-end justify-center w-full mb-4 z-10 gap-0">
                   {/* chỉnh kích thước cho capybara */}
                   <div className="relative w-[340px] h-[340px] mb-[-40px] -translate-x-[-110px] shrink-0 flex items-end justify-center z-10">
-                    <CapybaraAnimation className="w-full h-full object-contain" fps={24} />
+                    <CapybaraAnimation isTired={IS_TIRED_ANIMATION} className="w-full h-full object-contain" fps={12} />
                   </div>
 
                   {/* chỉnh kích thước của button note */}

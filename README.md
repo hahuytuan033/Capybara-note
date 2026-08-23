@@ -1,17 +1,17 @@
-# 🦦 Capybara Note - Sticky Notes for Productivity
+# 🦦 CapNote - Sticky Notes for Productivity
 
 [![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![Electron](https://img.shields.io/badge/Electron-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 
-**Capybara Note** is a cute and powerful sticky notes application built on top of Electron. Featuring a friendly Capybara-themed interface, it helps you manage your daily tasks in a visual, dynamic, and inspiring way.
+**CapNote** is a cute and powerful sticky notes application built on top of Electron. Featuring a friendly Capybara-themed interface, it helps you manage your daily tasks in a visual, dynamic, and inspiring way.
 
 ---
 
 ## 📸 Demo
 
-![Capybara Note Demo](src/assets/images/demo.png)
+![CapNote Demo](src/assets/images/demo.png)
 
 ---
 

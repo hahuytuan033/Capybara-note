@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, X, Laptop, Pencil, Eraser, HelpCircle, 
@@ -14,6 +14,8 @@ import { cn } from './lib/utils';
 import CapybaraAnimation from './components/CapybaraAnimation';
 import noteBtnImg from './assets/images/note_btn.png';
 import messageImg from './assets/images/message.png';
+import { IPC, type ReminderNote } from './lib/ipc';
+import { getElectron } from './lib/electron';
 
 interface NoteItem {
   id: string;
@@ -100,6 +102,9 @@ const StickyNote: React.FC<StickyNoteProps> = React.memo(({
   const isDragging = useRef(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
   const noteStartPos = useRef({ x: 0, y: 0 });
+  // Cleanup của thao tác kéo/resize đang diễn ra (nếu có), để gỡ listener window
+  // phòng khi note bị unmount giữa chừng (vd: xóa note, AnimatePresence exit).
+  const activeGestureCleanup = useRef<(() => void) | null>(null);
 
   const handleRightMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 2) return; // Only right mouse button
@@ -132,7 +137,8 @@ const StickyNote: React.FC<StickyNoteProps> = React.memo(({
       isDragging.current = false;
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      
+      activeGestureCleanup.current = null;
+
       // Sync with global state only on mouse up
       setLocalState(prev => {
         if (prev && (prev.x !== undefined || prev.y !== undefined)) {
@@ -144,6 +150,10 @@ const StickyNote: React.FC<StickyNoteProps> = React.memo(({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    activeGestureCleanup.current = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
   };
 
   const handleResizeStart = (e: React.PointerEvent, direction: 'e' | 's' | 'se') => {
@@ -165,7 +175,8 @@ const StickyNote: React.FC<StickyNoteProps> = React.memo(({
     const handlePointerUp = () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
-      
+      activeGestureCleanup.current = null;
+
       // Sync with global state only on mouse up
       setLocalState(prev => {
         if (prev && (prev.width !== undefined || prev.height !== undefined)) {
@@ -177,7 +188,19 @@ const StickyNote: React.FC<StickyNoteProps> = React.memo(({
 
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    activeGestureCleanup.current = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
   };
+
+  // Gỡ listener window nếu note bị unmount giữa lúc đang kéo/resize.
+  useEffect(() => {
+    return () => {
+      activeGestureCleanup.current?.();
+      activeGestureCleanup.current = null;
+    };
+  }, []);
 
   return (
     <motion.div
@@ -338,6 +361,53 @@ export default function App() {
 
   const activeNote = notes.find(n => n.id === activeNoteId);
 
+  // Chỉ gửi snapshot task chưa hoàn thành (có nội dung) sang main process
+  const pendingTasksPayload = useMemo<ReminderNote[]>(() => {
+    return notes
+      .map((note) => ({
+        noteId: note.id,
+        title: note.title,
+        items: note.items
+          .filter((it) => !it.completed && it.text.trim().length > 0)
+          .map((it) => ({ id: it.id, text: it.text })),
+      }))
+      .filter((n) => n.items.length > 0);
+  }, [notes]);
+
+  // Đồng bộ pending tasks với main process (khi mount và khi notes thay đổi)
+  useEffect(() => {
+    const electron = getElectron();
+    if (!electron) return;
+    electron.ipcRenderer.send(IPC.SYNC_TASKS, pendingTasksPayload);
+  }, [pendingTasksPayload]);
+
+  // Nhận yêu cầu mở note từ main process (khi click reminder)
+  useEffect(() => {
+    const electron = getElectron();
+    if (!electron) return;
+    const handler = (...args: unknown[]) => {
+      const noteId = args[1];
+      if (typeof noteId === 'string') {
+        setActiveNoteId(noteId);
+      }
+    };
+    electron.ipcRenderer.on(IPC.OPEN_NOTE, handler);
+    return () => electron.ipcRenderer.removeListener(IPC.OPEN_NOTE, handler);
+  }, []);
+
+  // Memoize the rendered note list so unrelated App re-renders
+  // (e.g. bubble visibility) don't recreate every StickyNote element.
+  const noteElements = useMemo(() => notes.map((note: Note) => (
+    <StickyNote
+      key={note.id}
+      note={note}
+      boardRef={boardRef}
+      setActiveNoteId={setActiveNoteId}
+      updateNote={updateNote}
+      removeNote={removeNote}
+    />
+  )), [notes, boardRef, setActiveNoteId, updateNote, removeNote]);
+
   return (
     <div className="min-h-screen w-full bg-[#fdf2d5] flex items-center justify-center overflow-hidden relative font-sans">
       <div className="w-[500px] h-[800px] bg-[#fdf2d5] flex flex-col items-center relative shadow-2xl overflow-hidden border-x border-black/5">
@@ -368,16 +438,7 @@ export default function App() {
               <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:30px_30px]" />
               
               <AnimatePresence>
-                {notes.map((note: Note) => (
-                  <StickyNote
-                    key={note.id}
-                    note={note}
-                    boardRef={boardRef}
-                    setActiveNoteId={setActiveNoteId}
-                    updateNote={updateNote}
-                    removeNote={removeNote}
-                  />
-                ))}
+                {noteElements}
               </AnimatePresence>
             </div>
 

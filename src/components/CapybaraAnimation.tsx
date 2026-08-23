@@ -23,25 +23,42 @@ export const ANIMATION_DURATION_CONFIG: Record<string, number | undefined> = {
 // ============================================================================
 export const FORCE_TIRED_ANIM: boolean | null = null;
 
-// Load and sort all frame PNGs from Idle_Work (145 frames)
-const workFrameModules = import.meta.glob<{ default: string }>('../assets/images/Idle_Work/*.png', {
-  eager: true,
-  import: 'default',
-});
+// Kích thước bitmap giữ trong RAM. Capybara hiển thị ở 340px (App.tsx), dùng 2×
+// (680px) để nét trên cả màn hình thường lẫn HiDPI. Frame gốc là 1080×1080 nên
+// downscale lúc decode cắt bitmap RAM từ ~4.45MB xuống ~1.85MB mỗi frame.
+const RENDER_SIZE = 680;
 
-const workFrameUrls: string[] = Object.keys(workFrameModules)
-  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-  .map((key) => workFrameModules[key] as unknown as string);
+// Giới hạn số frame decode song song để tránh đỉnh RAM tạm thời khi ~60 bản
+// 1080×1080 cùng tồn tại trước khi bị thu nhỏ.
+const LOAD_CONCURRENCY = 4;
 
-// Load and sort all frame PNGs from Idle_tired (23 frames)
-const tiredFrameModules = import.meta.glob<{ default: string }>('../assets/images/Idle_tired/*.png', {
-  eager: true,
-  import: 'default',
-});
+// Dynamic-import glob: returns a map of path -> () => Promise<URL> (lazy, NOT eager).
+// Only the frames of the active animation mode are actually imported/decoded.
+type FrameLoader = () => Promise<string>;
 
-const tiredFrameUrls: string[] = Object.keys(tiredFrameModules)
-  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-  .map((key) => tiredFrameModules[key] as unknown as string);
+const sortGlobKeys = (obj: Record<string, unknown>): string[] =>
+  Object.keys(obj).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+const workFrameGlob = import.meta.glob('../assets/images/Idle_Work/*.png', { import: 'default' });
+const tiredFrameGlob = import.meta.glob('../assets/images/Idle_tired/*.png', { import: 'default' });
+
+const workFrameLoaders: FrameLoader[] = sortGlobKeys(workFrameGlob).map((key) => workFrameGlob[key] as FrameLoader);
+const tiredFrameLoaders: FrameLoader[] = sortGlobKeys(tiredFrameGlob).map((key) => tiredFrameGlob[key] as FrameLoader);
+
+// Pre-compute the set of source frame indices the render loop will actually use for a mode.
+// This avoids importing/decoding every frame when only a subset is rendered.
+function computeUsedFrameIndices(frameCount: number, fps: number, duration?: number): number[] {
+  if (!duration || duration <= 0 || frameCount <= 0) {
+    return Array.from({ length: frameCount }, (_, i) => i);
+  }
+  const totalRenderSteps = Math.max(1, Math.round(fps * duration));
+  const indices = new Set<number>();
+  for (let step = 0; step < totalRenderSteps; step++) {
+    const idx = Math.floor((step % totalRenderSteps) * (frameCount / totalRenderSteps)) % frameCount;
+    indices.add(idx);
+  }
+  return Array.from(indices).sort((a, b) => a - b);
+}
 
 // Determine animation type based on Windows system clock (06:00 - 22:00: work, 22:00 - 06:00: tired)
 function getAnimationTypeByTime(): 'work' | 'tired' {
@@ -89,18 +106,33 @@ export const CapybaraAnimation: React.FC<CapybaraAnimationProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [currentAnimType, setCurrentAnimType] = useState<'work' | 'tired'>(getInitialType);
   const [imagesReady, setImagesReady] = useState(false);
+  const [isLoadingFrames, setIsLoadingFrames] = useState(false);
 
+  // Sparse arrays indexed by source frame index; unused indices stay undefined.
+  // Only the currently displayed mode holds live ImageBitmap objects (downscaled
+  // to RENDER_SIZE); the other mode is released.
   const imagesRef = useRef<{
-    work: HTMLImageElement[];
-    tired: HTMLImageElement[];
+    work: (ImageBitmap | undefined)[];
+    tired: (ImageBitmap | undefined)[];
   }>({
     work: [],
     tired: [],
   });
+  const activeLoadedRef = useRef<'work' | 'tired' | null>(null);
 
   const isPlayingRef = useRef(true);
   const animTypeRef = useRef<'work' | 'tired'>(currentAnimType);
   animTypeRef.current = currentAnimType;
+
+  // Release decoded bitmaps of a mode so the browser can free them immediately.
+  // ImageBitmap.close() drops the underlying pixels right away (not GC-dependent).
+  const releaseFrames = (type: 'work' | 'tired') => {
+    const arr = imagesRef.current[type];
+    for (const img of arr) {
+      if (img) img.close();
+    }
+    imagesRef.current[type] = [];
+  };
 
   // Track isTired prop or system clock on Windows to switch animation
   useEffect(() => {
@@ -131,80 +163,108 @@ export const CapybaraAnimation: React.FC<CapybaraAnimationProps> = ({
     return () => clearInterval(interval);
   }, [mode, isTired]);
 
-  // Preload both animation frame collections (Idle_Work & Idle_tired)
+  // Lazily load only the active mode's frames (Task 1 + Task 2).
+  // The previous mode's bitmaps are released AFTER the new mode is ready,
+  // so the canvas keeps showing the last frame (no flicker/blank).
   useEffect(() => {
     let isMounted = true;
+    const type = currentAnimType;
+    const loaders = type === 'work' ? workFrameLoaders : tiredFrameLoaders;
+    const fps = ANIMATION_FPS_CONFIG[type] ?? 12;
+    const duration = ANIMATION_DURATION_CONFIG[type];
+    const usedIndices = computeUsedFrameIndices(loaders.length, fps, duration);
 
-    const preloadList = (urls: string[]) => {
-      return urls.map((url) => {
-        const img = new Image();
-        img.src = url;
-        return img;
-      });
-    };
+    setIsLoadingFrames(true);
 
-    const workImages = preloadList(workFrameUrls);
-    const tiredImages = preloadList(tiredFrameUrls);
-
-    imagesRef.current = {
-      work: workImages,
-      tired: tiredImages,
-    };
-
-    // Mark ready once initial frames are loaded
-    let loadedCount = 0;
-    const allImages = [...workImages.slice(0, 10), ...tiredImages.slice(0, 5)];
-    allImages.forEach((img) => {
-      img.onload = () => {
-        if (!isMounted) return;
-        loadedCount++;
-        if (loadedCount >= Math.min(5, allImages.length)) {
-          setImagesReady(true);
+    // Decode một frame ở đầy đủ độ phân giải rồi thu nhỏ về RENDER_SIZE, chỉ giữ
+    // lại ImageBitmap nhỏ. Ảnh gốc (Image tạm) được giải phóng ngay sau đó.
+    const loadFrame = async (idx: number): Promise<ImageBitmap | undefined> => {
+      const url = await loaders[idx]();
+      if (!isMounted || !url) return undefined;
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = url;
+      try {
+        await img.decode();
+        if (!isMounted) return undefined;
+        const bitmap = await createImageBitmap(img, {
+          resizeWidth: RENDER_SIZE,
+          resizeHeight: RENDER_SIZE,
+          resizeQuality: 'high',
+        });
+        if (!isMounted) {
+          bitmap.close();
+          return undefined;
         }
-      };
-    });
+        return bitmap;
+      } finally {
+        img.src = '';
+      }
+    };
 
-    // Fallback timer in case images are already cached
-    const timer = setTimeout(() => {
-      if (isMounted) setImagesReady(true);
-    }, 150);
+    const load = async () => {
+      const images: (ImageBitmap | undefined)[] = new Array(loaders.length).fill(undefined);
+
+      // Load theo lô có giới hạn concurrency để giữ đỉnh RAM tạm thời ở mức thấp.
+      for (let i = 0; i < usedIndices.length; i += LOAD_CONCURRENCY) {
+        if (!isMounted) break;
+        const batch = usedIndices.slice(i, i + LOAD_CONCURRENCY);
+        await Promise.all(
+          batch.map(async (idx) => {
+            try {
+              const bitmap = await loadFrame(idx);
+              if (bitmap) images[idx] = bitmap;
+            } catch {
+              /* skip a single missing frame */
+            }
+          })
+        );
+      }
+
+      if (!isMounted) {
+        // Component unmounted mid-load: free anything already decoded.
+        for (const bmp of images) bmp?.close();
+        return;
+      }
+
+      imagesRef.current[type] = images;
+
+      // Release the previous mode now that the new one is ready (Task 3).
+      const prev = activeLoadedRef.current;
+      if (prev && prev !== type) {
+        releaseFrames(prev);
+      }
+      activeLoadedRef.current = type;
+
+      setIsLoadingFrames(false);
+      setImagesReady(true);
+    };
+
+    load();
 
     return () => {
       isMounted = false;
-      clearTimeout(timer);
+    };
+  }, [currentAnimType]);
+
+  // Free all decoded bitmaps on unmount (Task 3)
+  useEffect(() => {
+    return () => {
+      releaseFrames('work');
+      releaseFrames('tired');
+      activeLoadedRef.current = null;
     };
   }, []);
 
   // Main animation loop and window focus/blur/visibility handling
   useEffect(() => {
     let lastTime = performance.now();
-
-    const handleBlur = () => {
-      isPlayingRef.current = false;
-    };
-    const handleFocus = () => {
-      isPlayingRef.current = true;
-      lastTime = performance.now();
-    };
-    const handleVisibilityChange = () => {
-      isPlayingRef.current = !document.hidden;
-      if (!document.hidden) {
-        lastTime = performance.now();
-      }
-    };
-
-    window.addEventListener('blur', handleBlur);
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    let animationFrameId: number;
+    let animationFrameId: number | null = null;
     let currentFrame = 0;
     let lastType = animTypeRef.current;
 
     const render = (time: number) => {
       animationFrameId = requestAnimationFrame(render);
-
-      if (!isPlayingRef.current) return;
 
       const activeType = animTypeRef.current;
       const activeFrames = imagesRef.current[activeType];
@@ -244,10 +304,11 @@ export const CapybaraAnimation: React.FC<CapybaraAnimationProps> = ({
         }
 
         const img = activeFrames[targetFrameIndex % activeFrames.length];
-        if (img && img.complete && img.naturalWidth > 0) {
-          if (canvas.width !== img.naturalWidth || canvas.height !== img.naturalHeight) {
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
+        if (img) {
+          // Canvas backing store cố định ở RENDER_SIZE (nguồn đã downscale sẵn).
+          if (canvas.width !== RENDER_SIZE || canvas.height !== RENDER_SIZE) {
+            canvas.width = RENDER_SIZE;
+            canvas.height = RENDER_SIZE;
           }
 
           ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -258,10 +319,37 @@ export const CapybaraAnimation: React.FC<CapybaraAnimationProps> = ({
       }
     };
 
-    animationFrameId = requestAnimationFrame(render);
+    // Dừng hẳn vòng lặp rAF khi cửa sổ mất focus / bị ẩn, khởi động lại khi
+    // quay lại — thay cho việc để rAF quay không tải liên tục.
+    const startLoop = () => {
+      if (animationFrameId !== null) return;
+      isPlayingRef.current = true;
+      lastTime = performance.now();
+      animationFrameId = requestAnimationFrame(render);
+    };
+    const stopLoop = () => {
+      isPlayingRef.current = false;
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+    };
+
+    const handleBlur = () => stopLoop();
+    const handleFocus = () => startLoop();
+    const handleVisibilityChange = () => {
+      if (document.hidden) stopLoop();
+      else startLoop();
+    };
+
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    startLoop();
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      stopLoop();
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);

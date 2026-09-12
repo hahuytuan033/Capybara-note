@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, X, Laptop, Pencil, Eraser, HelpCircle,
   Home, Briefcase, BookOpen, Leaf, Check, Square,
-  Palette, Undo2
+  Palette, Undo2, GripVertical
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import CapybaraAnimation from './components/CapybaraAnimation';
@@ -327,6 +327,8 @@ export default function App() {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [deletedNote, setDeletedNote] = useState<Note | null>(null);
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
   // Toast helper function
@@ -343,6 +345,17 @@ export default function App() {
       setToast(null);
     }
   }, [deletedNote]);
+
+  // Reorder checklist items
+  const reorderItems = useCallback((noteId: string, fromIndex: number, toIndex: number) => {
+    setNotes(prev => prev.map(note => {
+      if (note.id !== noteId) return note;
+      const newItems = [...note.items];
+      const [removed] = newItems.splice(fromIndex, 1);
+      newItems.splice(toIndex, 0, removed);
+      return { ...note, items: newItems };
+    }));
+  }, []);
 
   // Debounced LocalStorage saving to prevent blocking thread
   useEffect(() => {
@@ -609,43 +622,90 @@ export default function App() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
-                  {activeNote.items.map((item) => (
-                    <div key={item.id} className="flex items-start gap-3 group/item">
-                      <button 
-                        onClick={() => {
-                          const newItems = activeNote.items.map(i => 
-                            i.id === item.id ? { ...i, completed: !i.completed } : i
-                          );
-                          updateNote(activeNote.id, { items: newItems });
+                  {activeNote.items.map((item, index) => {
+                    const isDragging = draggedItemId === item.id;
+                    const isDropTarget = dropTargetId === item.id;
+
+                    return (
+                      <div
+                        key={item.id}
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggedItemId(item.id);
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', item.id);
                         }}
-                        className="mt-1 text-[#3b4d9b]/40 hover:text-[#3b4d9b]/70 transition-colors shrink-0"
-                      >
-                        {item.completed ? <Check size={20} /> : <Square size={20} />}
-                      </button>
-                      <AutoSizeTextarea
-                        value={item.text}
-                        onChange={(e) => {
-                          const newItems = activeNote.items.map(i => 
-                            i.id === item.id ? { ...i, text: e.target.value } : i
-                          );
-                          updateNote(activeNote.id, { items: newItems });
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                          if (draggedItemId !== item.id) {
+                            setDropTargetId(item.id);
+                          }
+                        }}
+                        onDragLeave={() => setDropTargetId(null)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (draggedItemId && draggedItemId !== item.id) {
+                            const fromIndex = activeNote.items.findIndex(i => i.id === draggedItemId);
+                            const toIndex = activeNote.items.findIndex(i => i.id === item.id);
+                            if (fromIndex !== -1 && toIndex !== -1) {
+                              reorderItems(activeNote.id, fromIndex, toIndex);
+                            }
+                          }
+                          setDraggedItemId(null);
+                          setDropTargetId(null);
+                        }}
+                        onDragEnd={() => {
+                          setDraggedItemId(null);
+                          setDropTargetId(null);
                         }}
                         className={cn(
-                          "flex-1 bg-transparent border-none outline-none font-handwriting text-lg text-[#3b4d9b]",
-                          item.completed && "line-through opacity-50"
+                          "flex items-start gap-3 group/item rounded-lg p-1 -m-1 transition-all",
+                          isDragging && "opacity-40 bg-black/5",
+                          isDropTarget && "border-t-2 border-[#3b4d9b] pt-2"
                         )}
-                      />
-                      <button 
-                        onClick={() => {
-                          const newItems = activeNote.items.filter(i => i.id !== item.id);
-                          updateNote(activeNote.id, { items: newItems });
-                        }}
-                        className="mt-1 opacity-0 group-hover/item:opacity-100 text-[#3b4d9b]/20 hover:text-[#3b4d9b]/50 transition-all shrink-0"
                       >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ))}
+                        {/* Drag handle */}
+                        <div className="mt-1 cursor-grab opacity-0 group-hover/item:opacity-40 hover:opacity-70 transition-opacity shrink-0">
+                          <GripVertical size={16} className="text-[#3b4d9b]" />
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            const newItems = activeNote.items.map(i =>
+                              i.id === item.id ? { ...i, completed: !i.completed } : i
+                            );
+                            updateNote(activeNote.id, { items: newItems });
+                          }}
+                          className="mt-1 text-[#3b4d9b]/40 hover:text-[#3b4d9b]/70 transition-colors shrink-0"
+                        >
+                          {item.completed ? <Check size={20} /> : <Square size={20} />}
+                        </button>
+                        <AutoSizeTextarea
+                          value={item.text}
+                          onChange={(e) => {
+                            const newItems = activeNote.items.map(i =>
+                              i.id === item.id ? { ...i, text: e.target.value } : i
+                            );
+                            updateNote(activeNote.id, { items: newItems });
+                          }}
+                          className={cn(
+                            "flex-1 bg-transparent border-none outline-none font-handwriting text-lg text-[#3b4d9b]",
+                            item.completed && "line-through opacity-50"
+                          )}
+                        />
+                        <button
+                          onClick={() => {
+                            const newItems = activeNote.items.filter(i => i.id !== item.id);
+                            updateNote(activeNote.id, { items: newItems });
+                          }}
+                          className="mt-1 opacity-0 group-hover/item:opacity-100 text-[#3b4d9b]/20 hover:text-red-400 transition-all shrink-0"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    );
+                  })}
 
                   <button
                     onClick={() => {

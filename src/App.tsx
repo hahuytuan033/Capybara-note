@@ -5,15 +5,16 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Plus, X, Laptop, Pencil, Eraser, HelpCircle, 
+import {
+  Plus, X, Laptop, Pencil, Eraser, HelpCircle,
   Home, Briefcase, BookOpen, Leaf, Check, Square,
-  Palette
+  Palette, Undo2
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import CapybaraAnimation from './components/CapybaraAnimation';
 import { type ReminderNote } from './lib/ipc';
 import { getElectron } from './lib/electron';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import './lib/preload-types'; // Ensure Window.electronAPI types are available
 
 interface NoteItem {
@@ -305,6 +306,16 @@ const StickyNote: React.FC<StickyNoteProps> = React.memo(({
 // ============================================================================
 const IS_TIRED_ANIMATION: boolean = false;
 
+// Toast notification state
+interface ToastState {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>(() => {
     const saved = localStorage.getItem('roberts-notes');
@@ -314,7 +325,24 @@ export default function App() {
   const [showBubble, setShowBubble] = useState(true);
   const [isClosed, setIsClosed] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [deletedNote, setDeletedNote] = useState<Note | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
+
+  // Toast helper function
+  const showToast = useCallback((message: string, type: ToastState['type'] = 'success', action?: ToastState['action']) => {
+    setToast({ message, type, action });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  // Undo delete function
+  const undoDelete = useCallback(() => {
+    if (deletedNote) {
+      setNotes(prev => [...prev, deletedNote]);
+      setDeletedNote(null);
+      setToast(null);
+    }
+  }, [deletedNote]);
 
   // Debounced LocalStorage saving to prevent blocking thread
   useEffect(() => {
@@ -329,7 +357,7 @@ export default function App() {
 
   const addNote = useCallback(() => {
     if (!boardRef.current) return;
-    
+
     const boardRect = boardRef.current.getBoundingClientRect();
     const newNote: Note = {
       id: Math.random().toString(36).substr(2, 9),
@@ -343,22 +371,52 @@ export default function App() {
       color: COLORS[0],
       rotation: Math.random() * 6 - 3,
     };
-    
+
     setNotes(prev => [...prev, newNote]);
     setActiveNoteId(newNote.id);
     setShowBubble(false);
-  }, []);
+    showToast('Đã tạo note mới!', 'success');
+  }, [showToast]);
 
   const updateNote = useCallback((id: string, updates: Partial<Note>) => {
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
   }, []);
 
-  const removeNote = useCallback((id: string) => {
+  const removeNote = useCallback((id: string, showNotification = true) => {
+    const noteToDelete = notes.find(n => n.id === id);
+    if (noteToDelete) {
+      setDeletedNote(noteToDelete);
+    }
     setNotes(prev => prev.filter(n => n.id !== id));
     setActiveNoteId(prev => prev === id ? null : prev);
-  }, []);
+    if (showNotification && noteToDelete) {
+      showToast(`Đã xóa "${noteToDelete.title}"`, 'info', {
+        label: 'Hoàn tác',
+        onClick: undoDelete,
+      });
+    }
+  }, [notes, showToast, undoDelete]);
 
   const activeNote = notes.find(n => n.id === activeNoteId);
+
+  // Keyboard shortcuts
+  const handleCloseModal = useCallback(() => {
+    setActiveNoteId(null);
+    setShowColorPicker(false);
+  }, []);
+
+  const handleDeleteActiveNote = useCallback(() => {
+    if (activeNoteId) {
+      removeNote(activeNoteId);
+    }
+  }, [activeNoteId, removeNote]);
+
+  useKeyboardShortcuts({
+    onAddNote: addNote,
+    onCloseModal: handleCloseModal,
+    onDeleteActiveNote: handleDeleteActiveNote,
+    isModalOpen: activeNoteId !== null,
+  });
 
   // Chỉ gửi snapshot task chưa hoàn thành (có nội dung) sang main process
   const pendingTasksPayload = useMemo<ReminderNote[]>(() => {
@@ -491,6 +549,36 @@ export default function App() {
         )}
       </div>
 
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100]"
+          >
+            <div className={cn(
+              "px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 min-w-[200px]",
+              toast.type === 'success' && "bg-[#ccffcc] text-[#3b4d9b]",
+              toast.type === 'error' && "bg-red-100 text-red-600",
+              toast.type === 'info' && "bg-[#ffccf9] text-[#3b4d9b]"
+            )}>
+              <span className="text-sm font-medium flex-1">{toast.message}</span>
+              {toast.action && (
+                <button
+                  onClick={toast.action.onClick}
+                  className="flex items-center gap-1 text-xs font-bold text-[#3b4d9b] hover:text-[#a06e45] transition-colors underline underline-offset-2"
+                >
+                  <Undo2 size={12} />
+                  {toast.action.label}
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {activeNote && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm pointer-events-auto">
@@ -500,11 +588,8 @@ export default function App() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="relative w-[95%] max-w-[360px] bg-[#c18a5e] p-5 rounded-[2.5rem] border-4 border-[#a06e45] shadow-2xl"
             >
-              <button 
-                onClick={() => {
-                  setActiveNoteId(null);
-                  setShowColorPicker(false);
-                }}
+              <button
+                onClick={handleCloseModal}
                 className="absolute top-4 right-6 text-[#a06e45] hover:text-white transition-colors z-10"
               >
                 <X size={20} />
@@ -578,11 +663,8 @@ export default function App() {
                   </button>
                 </div>
 
-                <button 
-                  onClick={() => {
-                    setActiveNoteId(null);
-                    setShowColorPicker(false);
-                  }}
+                <button
+                  onClick={handleCloseModal}
                   className="absolute bottom-0 right-0 w-14 h-14 bg-black/10 rounded-tl-3xl flex items-center justify-center hover:bg-black/20 transition-colors"
                 >
                   <Check size={28} className="text-[#3b4d9b]/40" />

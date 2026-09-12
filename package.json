@@ -58,6 +58,7 @@
     "files": [
       "dist/**/*",
       "electron-main.js",
+      "preload.js",
       "src/assets/images/favicon.ico"
     ]
   }

@@ -26,6 +26,58 @@ const IPC = {
 };
 // ================================================================
 
+// =============================================================================
+// PAYLOAD VALIDATION (Type Safety)
+// =============================================================================
+
+/**
+ * Validate một item trong checklist
+ */
+function isValidReminderItem(item) {
+  return (
+    item !== null &&
+    typeof item === 'object' &&
+    typeof item.id === 'string' &&
+    typeof item.text === 'string'
+  );
+}
+
+/**
+ * Validate một note payload từ renderer
+ */
+function isValidReminderNote(note) {
+  return (
+    note !== null &&
+    typeof note === 'object' &&
+    typeof note.noteId === 'string' &&
+    typeof note.title === 'string' &&
+    Array.isArray(note.items) &&
+    note.items.every(isValidReminderItem)
+  );
+}
+
+/**
+ * Validate và sanitize toàn bộ payload từ SYNC_TASKS
+ */
+function validateAndSanitizePayload(payload) {
+  if (!Array.isArray(payload)) {
+    console.warn('[reminder] SYNC_TASKS: payload is not an array');
+    return [];
+  }
+
+  const validNotes = payload.filter(isValidReminderNote);
+
+  if (validNotes.length < payload.length) {
+    console.warn(
+      `[reminder] SYNC_TASKS: filtered out ${payload.length - validNotes.length} invalid note(s)`
+    );
+  }
+
+  return validNotes;
+}
+
+// =============================================================================
+
 let win = null;
 let tray = null;
 let reminderWindow = null;
@@ -72,8 +124,9 @@ function createReminderWindow() {
     skipTaskbar: true,
     show: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
       backgroundThrottling: true,
     }
   });
@@ -211,8 +264,9 @@ function createWindow() {
     icon: path.join(__dirname, 'src', 'assets', 'images', 'favicon.ico'),
     autoHideMenuBar: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
       // Throttle timers/animation in backgrounded windows to cut idle RAM/CPU
       backgroundThrottling: true,
     }
@@ -294,7 +348,9 @@ function registerIpc() {
   registerIpc.registered = true;
 
   ipcMain.on(IPC.SYNC_TASKS, (event, payload) => {
-    pendingTasks = Array.isArray(payload) ? payload : [];
+    // Validate payload trước khi xử lý
+    const validTasks = validateAndSanitizePayload(payload);
+    pendingTasks = validTasks;
     console.log('[reminder] SYNC_TASKS received: %d note(s) with pending items', pendingTasks.length);
     if (hasPendingTasks() && isMainWindowHidden()) {
       startScheduler();

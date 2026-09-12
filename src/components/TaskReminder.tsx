@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { IPC, type ReminderNote } from '../lib/ipc';
+import { type ReminderNote } from '../lib/ipc';
 import { getElectron } from '../lib/electron';
+import '../lib/preload-types'; // Ensure Window.electronAPI types are available
 
 // ============================================================================
 // 🐹 BOUNDARY TÍCH HỢP ASSET NHÂN VẬT:
@@ -22,26 +23,19 @@ const MAX_VISIBLE_ITEMS = 4;
 
 export const TaskReminder: React.FC = () => {
   const [note, setNote] = useState<ReminderNote | null>(null);
-  const electron = useRef(getElectron());
+  const electron = getElectron();
 
+  // Lắng nghe reminder payload từ main process
   useEffect(() => {
-    const handle = electron.current;
-    if (!handle) return;
-
-    const onShow = (_event: unknown, payload: ReminderNote) => {
+    if (!electron) return;
+    return electron.onShowReminder((payload) => {
       setNote(payload);
-    };
-
-    handle.ipcRenderer.on(IPC.SHOW_REMINDER, onShow);
-    return () => handle.ipcRenderer.removeListener(IPC.SHOW_REMINDER, onShow);
-  }, []);
+    });
+  }, [electron]);
 
   const handleClick = () => {
-    if (!note) return;
-    const handle = electron.current;
-    if (handle) {
-      handle.ipcRenderer.send(IPC.REMINDER_CLICK, note.noteId);
-    }
+    if (!note || !electron) return;
+    electron.sendReminderClick(note.noteId);
   };
 
   const visibleItems = note ? note.items.slice(0, MAX_VISIBLE_ITEMS) : [];
@@ -80,8 +74,7 @@ export const TaskReminder: React.FC = () => {
               className="text-[#a06e45] shrink-0 mt-0.5 opacity-60"
               onClick={(e) => {
                 e.stopPropagation();
-                const handle = electron.current;
-                if (handle) handle.ipcRenderer.send(IPC.REMINDER_DISMISS);
+                if (electron) electron.sendReminderDismiss();
               }}
             />
           </div>

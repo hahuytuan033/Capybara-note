@@ -2,6 +2,50 @@
 
 > Mục tiêu: thêm 4 nhóm tính năng giúp app dễ thương, gần gũi và "có hồn" hơn — mà chi phí thấp.
 
+---
+
+## ✅ Đã hoàn thành: Security & Type Safety
+
+### Phần 1: Security (Preload Script)
+
+- [x] Tạo `preload.js` - secure bridge giữa main process và renderer
+- [x] Thay đổi `webPreferences`:
+  - `nodeIntegration: false` (thay vì `true`)
+  - `contextIsolation: true` (thay vì `false`)
+  - Thêm `preload: path.join(__dirname, 'preload.js')`
+- [x] Cập nhật `package.json` để include `preload.js` trong build
+
+### Phần 2: Type Safety (IPC Validation)
+
+- [x] Tạo `src/lib/preload-types.ts` - TypeScript interface cho ElectronAPI
+- [x] Thêm payload validation trong `electron-main.js`:
+  - `isValidReminderItem()` - validate checklist item
+  - `isValidReminderNote()` - validate note structure
+  - `validateAndSanitizePayload()` - sanitize toàn bộ SYNC_TASKS payload
+- [x] Refactor renderer để dùng preload API:
+  - `electron.sendTaskSync()` thay vì `electron.ipcRenderer.send(IPC.SYNC_TASKS)`
+  - `electron.onShowReminder(callback)` - returns cleanup function
+  - `electron.onOpenNote(callback)` - returns cleanup function
+  - `electron.sendReminderClick(noteId)`
+  - `electron.sendReminderDismiss()`
+- [x] Cập nhật `src/lib/electron.ts` với hybrid approach (preload + legacy fallback)
+
+### Files thay đổi
+
+| File | Action |
+|------|--------|
+| `preload.js` | **Created** - Secure IPC bridge |
+| `src/lib/preload-types.ts` | **Created** - TypeScript types |
+| `electron-main.js` | **Updated** - Security + validation |
+| `src/lib/electron.ts` | **Updated** - Preload API support |
+| `src/App.tsx` | **Updated** - Dùng preload API |
+| `src/components/TaskReminder.tsx` | **Updated** - Dùng preload API |
+| `package.json` | **Updated** - Include preload.js |
+
+---
+
+## 🎯 Phạm vi còn lại
+
 ## 🎯 Phạm vi
 1. Capybara phản ứng theo hành động
 2. Hiệu ứng + âm thanh nhỏ

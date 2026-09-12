@@ -14,8 +14,9 @@ import { cn } from './lib/utils';
 import CapybaraAnimation from './components/CapybaraAnimation';
 import noteBtnImg from './assets/images/note_btn.png';
 import messageImg from './assets/images/message.png';
-import { IPC, type ReminderNote } from './lib/ipc';
+import { type ReminderNote } from './lib/ipc';
 import { getElectron } from './lib/electron';
+import './lib/preload-types'; // Ensure Window.electronAPI types are available
 
 interface NoteItem {
   id: string;
@@ -378,21 +379,16 @@ export default function App() {
   useEffect(() => {
     const electron = getElectron();
     if (!electron) return;
-    electron.ipcRenderer.send(IPC.SYNC_TASKS, pendingTasksPayload);
+    electron.sendTaskSync(pendingTasksPayload);
   }, [pendingTasksPayload]);
 
   // Nhận yêu cầu mở note từ main process (khi click reminder)
   useEffect(() => {
     const electron = getElectron();
     if (!electron) return;
-    const handler = (...args: unknown[]) => {
-      const noteId = args[1];
-      if (typeof noteId === 'string') {
-        setActiveNoteId(noteId);
-      }
-    };
-    electron.ipcRenderer.on(IPC.OPEN_NOTE, handler);
-    return () => electron.ipcRenderer.removeListener(IPC.OPEN_NOTE, handler);
+    return electron.onOpenNote((noteId) => {
+      setActiveNoteId(noteId);
+    });
   }, []);
 
   // Memoize the rendered note list so unrelated App re-renders

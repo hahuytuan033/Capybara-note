@@ -12,8 +12,6 @@ import {
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import CapybaraAnimation from './components/CapybaraAnimation';
-import noteBtnImg from './assets/images/note_btn.png';
-import messageImg from './assets/images/message.png';
 import { type ReminderNote } from './lib/ipc';
 import { getElectron } from './lib/electron';
 import './lib/preload-types'; // Ensure Window.electronAPI types are available
@@ -447,9 +445,9 @@ export default function App() {
                     exit={{ opacity: 0, scale: 0.8 }}
                     className="relative mb-2 w-[260px] translate-x-[-50px] translate-y-[90px] flex items-center justify-center select-none z-20 pointer-events-none"
                   >
-                    <img 
-                      src={messageImg} 
-                      alt="Message Bubble" 
+                    <img
+                      src="/images/message.png"
+                      alt="Message Bubble"
                       className="w-full h-auto object-contain drop-shadow-md pointer-events-none"
                       draggable={false}
                     />
@@ -479,9 +477,9 @@ export default function App() {
                     className="relative pointer-events-auto cursor-pointer shrink-0 mb-1 ml-[-20px] z-20 focus:outline-none translate-x-[-1px] translate-y-[-32px]"
                     title="Add Note"
                   >
-                    <img 
-                      src={noteBtnImg} 
-                      alt="Add Note" 
+                    <img
+                      src="/images/note_btn.png"
+                      alt="Add Note"
                       className="w-14 h-auto object-contain select-none drop-shadow-md pointer-events-none"
                       draggable={false}
                     />

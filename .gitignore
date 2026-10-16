@@ -13,3 +13,6 @@ coverage/
 .tokensave/
 .claude/
 .kilo/
+**/bin/
+**/obj/
+artifacts/

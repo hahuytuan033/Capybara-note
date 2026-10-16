@@ -1,0 +1,16 @@
+<Application x:Class="CapNote.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+  <Application.Resources>
+    <FontFamily x:Key="MomoFont">pack://application:,,,/Assets/Fonts/#Momo Signature</FontFamily>
+    <SolidColorBrush x:Key="DeskBrush" Color="#FDF2D5"/>
+    <SolidColorBrush x:Key="BoardBrush" Color="#C18A5E"/>
+    <SolidColorBrush x:Key="BoardBorderBrush" Color="#A06E45"/>
+    <SolidColorBrush x:Key="InkBrush" Color="#3B4D9B"/>
+    <Style TargetType="Button">
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="FontFamily" Value="{StaticResource MomoFont}"/>
+    </Style>
+    <Style TargetType="TextBox"><Setter Property="FontFamily" Value="{StaticResource MomoFont}"/></Style>
+  </Application.Resources>
+</Application>

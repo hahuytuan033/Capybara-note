@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="CapNote.Core/CapNote.Core.csproj" />
+  <Project Path="CapNote.App/CapNote.App.csproj" />
+  <Project Path="CapNote.Tests/CapNote.Tests.csproj" />
+</Solution>

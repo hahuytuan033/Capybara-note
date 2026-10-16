@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>CapNote</AssemblyName>
+    <RootNamespace>CapNote.App</RootNamespace>
+    <ApplicationIcon>..\src\assets\images\favicon.ico</ApplicationIcon>
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CapNote.Core\CapNote.Core.csproj" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <Resource Include="..\src\assets\fonts\MomoSignature-Regular.ttf" Link="Assets\Fonts\MomoSignature-Regular.ttf" />
+    <Resource Include="..\src\assets\images\favicon.ico" Link="Assets\favicon.ico" />
+    <None Include="..\src\assets\images\favicon.ico" Link="Assets\favicon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\public\images\message.png" Link="Assets\message.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\public\images\note_btn.png" Link="Assets\note_btn.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\src\assets\images\Idle_Work\*.png" Link="Assets\Idle_Work\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\src\assets\images\Idle_tired\*.png" Link="Assets\Idle_tired\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
